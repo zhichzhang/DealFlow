@@ -1,0 +1,37 @@
+<html>
+<head>
+    <link rel="stylesheet" href="index.css">
+</head>
+
+<body>
+
+<header>
+    <h1>Prox</h1>
+    <p>Your weekly deals, sorted by savings</p>
+</header>
+
+<main>
+    {{#each retailers}}
+    <h2>{{name}}</h2>
+    <ul>
+        {{#each deals}}
+        <li>
+            <strong>{{product}}</strong>
+            {{#if size}} ({{size}}){{/if}}
+            — ${{price}}
+            <span>({{start_date}} – {{end_date}})</span>
+        </li>
+        {{/each}}
+    </ul>
+    {{/each}}
+</main>
+
+<footer>
+    <p>
+        <a href="#">Manage preferences</a>
+    </p>
+    <p>If you cannot view this email properly, you can view it in plain text.</p>
+</footer>
+
+</body>
+</html>
