@@ -1,10 +1,8 @@
-// Retailer record stored in the database
 export interface Retailer {
     id?: number;      // Supabase-generated ID
     name: string;     // Retailer name (unique)
 }
 
-// Product record stored in the database
 export interface Product {
     id?: number;
     name: string;     // Product name
@@ -12,7 +10,6 @@ export interface Product {
     category: string; // e.g., "beverage", "snack"
 }
 
-// Deal record stored in the database
 export interface Deal {
     id?: number;
     retailer_id: number; // FK → retailers.id
@@ -22,7 +19,6 @@ export interface Deal {
     end_date: string;
 }
 
-// User record stored in the database
 export interface User {
     id?: number;
     name: string;
@@ -30,7 +26,6 @@ export interface User {
     preferred_retailers: string[]; // List of retailer names
 }
 
-// Raw JSON input format before normalization
 export interface DealJSON {
     retailer: string;
     product: string;
