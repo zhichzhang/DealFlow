@@ -1,243 +1,246 @@
-# DealFlow – Kafka + Redis Automated Weekly Deals Pipeline
+# DealFlow — Automated Weekly Deals Pipeline
 
-## Overview
-**DealFlow** is a Node.js + Supabase + Kafka + Redis pipeline that automates:
+Automated backend workflow for retailer deal recommendations.  
+This project provides an end-to-end pipeline to:
 
-- Ingesting product deals and user preferences from JSON or other sources  
-- Deduplicating and normalizing data with **Redis**  
-- Publishing deal and email events to **Kafka topics**  
-- Processing events asynchronously via consumers  
-- Sending personalized weekly emails using Handlebars templates via **Resend API**  
+- Ingest deal, user, product, and retailer data
+- Normalize and store in Supabase Postgres
+- Generate personalized weekly deal emails
+- Send emails automatically via Resend API
 
-This architecture supports scalable, reliable, and idempotent weekly execution.
-
----
-
-## Architecture
-
-```text
-JSON Files / External Sources
-        │
-        ▼
-  Data Ingestion Script
-        │
-        ▼
-   Redis Deduplication  ←───── Prevent duplicate deals/emails
-        │
-        ▼
-   Kafka Producers
-  ┌──────────────────┐   ┌──────────────────┐
-  │ deals.ingested    │   │ emails.weekly     │
-  └──────────────────┘   └──────────────────┘
-        │                      │
-        ▼                      ▼
-  Kafka Consumers           Kafka Consumers
-  ┌──────────────┐         ┌──────────────┐
-  │ dealConsumer │         │ emailConsumer│
-  └──────────────┘         └──────────────┘
-        │                      │
-        ▼                      ▼
-  Supabase Postgres         Resend API
-````
-
----
-
-## Environment Variables
-
-Create a `.env` file in the project root. **Do not commit secrets.**
-
-```text
-# Redis configuration
-REDIS_URL=      # Redis connection URL (e.g., redis://localhost:6379)
-REDIS_USERNAME= # Redis username
-REDIS_PWD=      # Redis password
-REDIS_SOCKET_HOST= # Optional: Redis cloud host
-REDIS_SOCKET_PORT= # Optional: Redis cloud port
-
-# Kafka configuration
-KAFKA_BROKERS=      # Comma-separated list of Kafka brokers (e.g., kafka:9092)
-KAFKA_TOPIC_DEALS=  # Topic for ingested deals (e.g., deals.ingested)
-KAFKA_TOPIC_EMAILS= # Topic for weekly email jobs (e.g., emails.weekly)
-
-# Supabase configuration
-SUPABASE_URL=             # Supabase project URL
-SUPABASE_SECRET_KEY=      # Supabase service-role key for backend operations
-SUPABASE_PUBLISHABLE_KEY= # Optional: client key if needed
-
-# Resend email API
-RESEND_API_KEY=            # API key for sending emails
-```
-
-**Purpose:**
-
-* **Redis:** Deduplication of deals and email jobs
-* **Kafka:** Event-driven ingestion and email queue
-* **Supabase:** Normalized storage of users, retailers, products, and deals
-* **Resend:** Delivery of personalized weekly emails
-
----
+It can be scheduled using cron, GitHub Actions, or Supabase scheduled functions.
 
 ## Features
 
-### Kafka + Redis Pipeline
+### Main Features
 
-* Deduplicates deals/emails via Redis
-* Produces events to Kafka topics (`deals.ingested` and `emails.weekly`)
-* Consumers asynchronously process events:
+- **Data Ingestion**
+  - Batch import users, retailers, products, and deals from JSON files
+  - Automatic deduplication logic to avoid duplicate inserts
+  - Dynamic linking between user preferences and deals
 
-    * `dealConsumer`: upserts deals into Supabase
-    * `emailConsumer`: generates and sends emails
+- **Email Generation**
+  - Fetch weekly relevant deals based on user preferences
+  - Render personalized HTML emails using Handlebars templates
+  - Weekly automated email delivery
 
-### Data Ingestion
+- **Database Integration**
+  - Supabase Postgres
+  - Foreign keys and unique constraints for data integrity
+  - Fully typed with TypeScript interfaces
 
-* Upserts users, retailers, products, and deals
-* Deduplicates deals before publishing to Kafka
-* Inserts only deals relevant to at least one user
+## Project Structure
 
-### Email Delivery
-
-* Queues weekly emails in Kafka (`emails.weekly`)
-* Redis ensures users only receive one weekly email
-* Fetches top deals per user, groups by retailer, renders HTML via Handlebars, sends via Resend
-
-### Database Integration
-
-* Fully typed TypeScript interfaces
-* Supabase Postgres with foreign keys & unique constraints
-* Tables: `users`, `retailers`, `products`, `deals`
-
----
-
-## Workflow Example
-
-```ts
-// Entry point
-await ingestData();         // Upsert users, publish deals to Kafka
-await queueWeeklyEmails();  // Publish email jobs to Kafka
-
-// Kafka consumers process asynchronously:
-// dealConsumer → upsert deals in Supabase
-// emailConsumer → send emails via Resend
 ```
 
----
-
-## Benefits of Kafka + Redis Refactor
-
-1. **Decoupled ingestion & delivery** – pipelines run independently
-2. **Scalable** – multiple consumers can run in parallel
-3. **Reliable** – Redis dedup prevents duplicate processing
-4. **Idempotent** – safe retries for ingestion/email jobs
-5. **Observability** – Kafka topics track queued and processed events
-
----
-
-## Running the Pipeline
-
-### Installation
-
-```bash
-npm install
+.
+├── src/
+│   ├── db.ts                  # Supabase connection
+│   ├── ingestData.ts          # Scripts to ingest deal/user/product data
+│   ├── sendEmails.ts          # Email generation and sending
+│   ├── assets/
+│   │   ├── data/              # Sample/test data
+│   │   │   ├── sample-deal-data.json
+│   │   │   ├── test-user-data.json
+│   │   ├── email-temp/        # Email templates
+│   │   │   ├── email-temp.html
+│   │   │   ├── index.css
+│   ├── cli/
+│   │   └── sendWeekly.ts      # CLI entry point
+│   └── types/
+│       └── models.ts          # TypeScript type definitions
+├── prisma.config.ts           # DB schema / migration log
+├── package.json
+├── tsconfig.json
+└── README.md
 ```
-
-### Run full weekly workflow
-
-```bash
-npm run send:weekly
-```
-
-Internally executes:
-
-1. `ingestData()` → publishes deals to Kafka
-2. `queueWeeklyEmails()` → publishes email jobs to Kafka
-
-Consumers handle asynchronous processing.
-
----
 
 ## Database Schema (Supabase)
 
 ### Users
 
-| Column              | Type   | Description             |
-| ------------------- | ------ | ----------------------- |
-| id                  | uuid   | Primary key             |
-| name                | text   | User name               |
-| email               | text   | Unique email            |
-| preferred_retailers | text[] | Array of retailer names |
+| Column               | Type      | Description                     |
+|---------------------|-----------|---------------------------------|
+| `id`                | uuid      | Primary key, Supabase gen_random_uuid() |
+| `name`              | text      | User name                        |
+| `email`             | text      | Email address                    |
+| `preferred_retailers` | text[]   | List of preferred retailer names |
 
 ### Retailers
 
-| Column | Type | Description          |
-| ------ | ---- | -------------------- |
-| id     | uuid | Primary key          |
-| name   | text | Unique retailer name |
+| Column | Type | Description  |
+|--------|------|--------------|
+| `id`   | uuid | Primary key  |
+| `name` | text | Retailer name|
 
 ### Products
 
-| Column   | Type | Description       |
-| -------- | ---- | ----------------- |
-| id       | uuid | Primary key       |
-| name     | text | Product name      |
-| size     | text | Product size      |
-| category | text | Optional category |
+| Column     | Type | Description    |
+|------------|------|----------------|
+| `id`       | uuid | Primary key    |
+| `name`     | text | Product name   |
+| `size`     | text | Product size   |
+| `category` | text | Product category|
 
 ### Deals
 
-| Column                                      | Type          | Description             |
-| ------------------------------------------- | ------------- | ----------------------- |
-| id                                          | uuid          | Primary key             |
-| retailer_id                                 | uuid          | FK → retailers.id       |
-| product_id                                  | uuid          | FK → products.id        |
-| price                                       | numeric(10,2) | Deal price              |
-| start_date                                  | date          | Deal start date         |
-| end_date                                    | date          | Deal end date           |
-| created_at                                  | timestamp     | Defaults to now()       |
-| UNIQUE(retailer_id, product_id, start_date) | Constraint    | Prevent duplicate deals |
+| Column       | Type           | Description                        |
+|-------------|----------------|------------------------------------|
+| `id`        | uuid           | Primary key                        |
+| `retailer_id` | uuid         | Foreign key → `retailers.id`       |
+| `product_id`  | uuid         | Foreign key → `products.id`        |
+| `price`      | numeric(10,2)  | Deal price                          |
+| `start_date` | date           | Deal start date                     |
+| `end_date`   | date           | Deal end date                       |
+| `created_at` | timestamp      | Record creation timestamp           |
 
----
+Unique constraints ensure no duplicate deals are inserted.
 
-## Future Improvements
+## Architecture Overview
 
-1. Weekly scheduling: GitHub Actions, Supabase Functions, or cron
-2. Admin dashboard: upload deals, preview emails, view ingestion logs
-3. Advanced email personalization: "new vs returning deals", category filters
-4. Data validation: JSON schema check, deduplication, normalization
-5. Real-time ingestion from APIs, queue-based pipelines
+The pipeline consists of four main components: **Data Ingestion**, **Kafka Messaging**, **Redis Caching**, and **Email Rendering & Sending**.
 
----
+```
+     +--------------------+
+     |   Source Data      |
+     | JSON / CSV Files   |
+     +---------+----------+
+               |
+               v
+     +--------------------+
+     |   Ingestion Script |
+     |  (Node.js / TS)    |
+     +---------+----------+
+               |
+               v
+    ----------------------
+   | Kafka Topics         |
+   |  - deals.ingested    |
+   |  - users.ingested    |
+   |  - emails.jobs       |
+   |  - emails.render     |
+   |  - emails.send       |
+    ----------------------
+       |          |
+       v          v
++---------------+  +----------------+
+| Redis Cache   |  | Supabase DB    |
+| (optional)    |  | Deals / Users  |
++-------+-------+  +--------+-------+
+|                  |
++--------+---------+
+|
+v
++--------------------+
+| Email Rendering    |
+| (Handlebars HTML)  |
++---------+----------+
+|
+v
++--------------------+
+|  Resend API        |
+|  Email Delivery    |
++--------------------+
+
+```
+
+- **Data Ingestion**: Reads source JSON/CSV files, deduplicates, and publishes to Kafka topics.  
+- **Kafka**: Handles message streaming for deals, users, and email jobs.  
+- **Redis**: Optional caching layer for frequently accessed data.  
+- **Supabase**: Stores normalized deals, products, retailers, and users.  
+- **Email Rendering**: Handlebars templates generate personalized HTML emails.  
+- **Resend API**: Sends the generated emails to users automatically.
+
+## Environment Variables
+
+Create a `.env` file in the project root:
+
+```
+
+# Redis configuration
+
+REDIS_URL=redis://localhost:6379
+REDIS_USERNAME=default
+REDIS_PWD=your_redis_password
+REDIS_SOCKET_HOST=your_redis_host
+REDIS_SOCKET_PORT=your_redis_port
+
+# Kafka configuration
+
+KAFKA_BROKERS=your_kafka_broker:9092
+KAFKA_TOPIC_DEALS=deals.ingested
+KAFKA_TOPIC_USERS=users.ingested
+KAFKA_TOPIC_EMAIL_JOB=emails.jobs
+KAFKA_TOPIC_EMAIL_RENDER=emails.render
+KAFKA_TOPIC_EMAIL_SEND=emails.send
+
+# Supabase configuration
+
+SUPABASE_URL=your_supabase_url
+SUPABASE_SECRET_KEY=your_supabase_service_key
+SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+
+# Resend API key
+
+RESEND_API_KEY=your_resend_api_key
+````
+
+### Notes
+
+- Do not commit actual secrets to GitHub; replace with placeholder values.
+- `REDIS_SOCKET_HOST` and `REDIS_SOCKET_PORT` are optional if using a local Redis instance.
+- Kafka topics can be modified if needed.
+- Supabase keys include both `SECRET_KEY` for server-side and `PUBLISHABLE_KEY` for client-side usage.
+- Resend API key is used to send emails programmatically.
+
+## Installation
+
+Install dependencies:
+
+```bash
+npm install
+````
+
+## Run and Deployment
+
+### Local Testing
+
+**1. Ingest Data**
+
+```bash
+npx ts-node src/ingestData.ts
+```
+
+**2. Send Weekly Emails**
+
+```bash
+npm run send:weekly
+```
 
 ## Sample Data
 
-* `assets/data/sample-deal-data.json`
-* `assets/data/test-user-data.json`
+Located in `src/assets/data/`:
 
----
+* `sample-deal-data.json`
+* `test-user-data.json`
+
+These files can be used to test the full pipeline locally.
 
 ## Email Template
 
-* `assets/temp/email-temp/email-temp.html`
-* `assets/temp/email-temp/index.css`
+Default template: `src/assets/email-temp/email-temp.html`
+Supports dynamic variables using Handlebars.
 
----
+## Project Goals
 
-## TypeScript Models
+* Automate data cleaning and ingestion
+* Weekly personalized deal email delivery
+* Production-ready TypeScript + Supabase integration
+* Modular, extensible workflow
 
-Defined in `types/models.ts`
+## Future Ideas
 
-* User
-* Retailer
-* Product
-* Deal
-* DealJSON (raw ingestion format)
-
----
-
-## Summary
-
-DealFlow provides a **production-ready, scalable, idempotent pipeline** for:
-
-* Importing structured deal data
-* Deduplicating and storing it in Supabase
-* Generating personalized weekly emails
-* Sending emails asynchronously via Kafka + Redis + Resend
+* Scheduler with GitHub Actions / cron / Supabase triggers
+* Web dashboard for deal insights
+* Logging and alerting
+* Multiple data source integration
